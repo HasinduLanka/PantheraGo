@@ -1,0 +1,68 @@
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <!-- <script src="wasm_exec.js"></script>
+  <script src="gowasm.js"></script> -->
+  <script src="main.js"></script>
+</head>
+
+<body>
+  <div id='wasmbody'>
+    <h1> PantheraGo </h1>
+    <h2>
+      Open-source project by <go var="company-name"> </go>
+    </h2>
+
+    <p>
+      <go var="bigtext">
+        <h3>I'm dummy text </h3>
+        I'll be here until PantheraGo replace me with actual content
+      </go>
+    </p>
+
+    <br>
+    <br>
+
+    <p>
+      This is a Go variable : <go var="myvar"> </go>
+    </p>
+
+    <br>
+
+    <div>
+      This is a Go function with HTML parameters : <go func="sayhello" name="CrazyCat"> </go>
+    </div>
+
+    <br>
+
+
+
+    <p> We can call Events using "GoEvent('event-id', 'sender', 'parameter')" </p>
+    <input type="button" value="Click me" onclick="GoEvent('btn-count-click','btn-count','')" />
+    <h2>
+      Count : <go var="count"> </go>
+    </h2>
+
+    <br>
+    <br>
+
+    <div>
+      <h2>Textbox on keydown event - Partial Update of page</h2>
+      <input type="text" id="txt-name" placeholder="Name of person"
+        onkeyup="GoEvent('txt-name-change','txt-name', document.getElementById('txt-name').value)">
+      <a>
+        <go var="name-result"></go>
+      </a>
+    </div>
+
+
+
+
+  </div>
+
+
+
+</body>
+
+</html>

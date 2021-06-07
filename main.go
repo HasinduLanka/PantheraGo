@@ -1,75 +1,113 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"strconv"
+	"time"
 )
+
+var DefaultSession Session
+var ComponentSrcs map[string]*ComponentSrc
 
 func main() {
 	fmt.Println("Panthera.Go")
 
-	SetVar("company-name", "Bitblazers")
+	ComponentSrcs = map[string]*ComponentSrc{
+		"dash": {
+			SrcID: "dash",
+			Provider: func() string {
+				HTML, _ := LoadURIToString("dash.go.html")
+				return HTML
+			},
+			GoFuncs:  map[string]func(*Component) string{},
+			GoEvents: map[string]func(*Component, string, string) EventResponse{},
+		},
+	}
 
-	SetVar("bigtext", "PantheraGo is a HTML DOM manipulator written in <strong> Go Language. </strong> PantheraGo can run in the browser using Web Assembly and also, it can function as a webserver running on Linux, Mac, Windows and Android natively ")
+	DefaultSession = Session{
+		ID:                   "Default",
+		ComponentSrcProvider: ComponentSrcProvider,
+	}
 
-	SetVar("myvar", "123")
-	SetVar("count", "1")
+	DefaultSession.MakeRoot()
 
-	SetFunc("sayhello", SayHello)
+	DefaultSession.SetVar("dash1.company-name", "Bitblazers")
 
-	SetEvent("btn-count-click", BtnCountClick)
-	SetEvent("txt-name-change", TxtNameChanged)
+	DefaultSession.SetVar("dash.bigtext", "PantheraGo is a HTML DOM manipulator written in <strong> Go Language. </strong> PantheraGo can run in the browser using Web Assembly and also, it can function as a webserver running on Linux, Mac, Windows and Android natively ")
+
+	DefaultSession.SetVar("dash1.myvar", "123")
+	DefaultSession.SetVar("dash1.count", "1")
+
+	Dash := ComponentSrcProvider("dash")
+
+	Dash.SetFunc("new", func(c *Component) string {
+		c.SetVar("dash1.count", "123")
+		return ""
+	})
+
+	DefaultSession.ResolveCompPath("dash1").Src = Dash
+
+	// DefaultSession.SetFunc("dash.sayhello", SayTime)
+
+	// DefaultSession.ResolveCompPath("dash").r
+
+	// DefaultSession.SetEvent("root.btn-count-click", BtnCountClick)
+	// DefaultSession.SetEvent("root.txt-name-change", TxtNameChanged)
 
 	HttpServe()
 }
 
+func ComponentSrcProvider(src string) *ComponentSrc {
+	C, found := ComponentSrcs[src]
+	if !found {
+		return nil
+	}
+	return C
+}
+
 func ServePanthera(Args []string) Response {
 	HTML, _ := LoadURIToString(Args[0])
-	Panthtml := Render(HTML)
+	Panthtml := DefaultSession.Render(HTML, DefaultSession.RootComp)
 	return StringResponse(Panthtml)
 }
 
-func SayHello(args map[string]string) string {
-	name, found := args["name"]
-	if found {
-		return "Hello there " + name
-	}
-	return "Please tell me your name"
+func SayTime() string {
+
+	return "Hello there. Time is " + time.Now().String()
 }
 
-func BtnCountClick(sender, Para string) EventResponse {
-	println("Event raised : From " + sender + " :  Para " + Para)
-	count, err := strconv.Atoi(GetVar("count"))
-	if err != nil {
-		count = 0
-	}
-	count++
+// func BtnCountClick(sender, Para string) EventResponse {
+// 	println("Event raised : From " + sender + " :  Para " + Para)
+// 	count, err := strconv.Atoi(GetVar("count"))
+// 	if err != nil {
+// 		count = 0
+// 	}
+// 	count++
 
-	SetVar("count", strconv.Itoa(count))
-	SetVar("myvar", "Whole document can be reloaded on each event "+strconv.Itoa(count))
+// 	SetVar("count", strconv.Itoa(count))
+// 	SetVar("myvar", "Whole document can be reloaded on each event "+strconv.Itoa(count))
 
-	return EventResponse{Reload: true}
-}
+// 	return EventResponse{Reload: true}
+// }
 
-func TxtNameChanged(sender, Para string) EventResponse {
-	if len(Para) == 0 {
-		return EventResponse{Reload: false, Update: false}
-	}
+// func TxtNameChanged(sender, Para string) EventResponse {
+// 	if len(Para) == 0 {
+// 		return EventResponse{Reload: false, Update: false}
+// 	}
 
-	var ch chan string = make(chan string)
-	go BuildSomeLongText(Para, ch)
+// 	var ch chan string = make(chan string)
+// 	go BuildSomeLongText(Para, ch)
 
-	var buffer bytes.Buffer
+// 	var buffer bytes.Buffer
 
-	for perm := range ch {
-		buffer.WriteString(perm)
-	}
+// 	for perm := range ch {
+// 		buffer.WriteString(perm)
+// 	}
 
-	R := buffer.String()
-	SetVar("name-result", R)
-	return EventResponse{Reload: false, Update: true, ID: "name-result", Content: R}
-}
+// 	R := buffer.String()
+// 	SetVar("name-result", R)
+// 	return EventResponse{Reload: false, Update: true, ID: "name-result", Content: R}
+// }
 
 func BuildSomeLongText(s string, ch chan string) {
 	ch <- " <br>"

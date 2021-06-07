@@ -8,59 +8,30 @@
 </head>
 
 <body>
-  <div id='wasmbody'>
-    <h1> PantheraGo </h1>
-    <h2>
-      Open-source project by <go var="company-name"> </go>
-    </h2>
+  <gocomp compinst="dash1" compsrc="dash">
+    Placeholder content for dash component
 
-    <p>
-      <go var="bigtext">
-        <h3>I'm dummy text </h3>
-        I'll be here until PantheraGo replace me with actual content
-      </go>
-    </p>
+    <gocomp compinst="internaldash" compsrc="intl">
+      Generated internal component
+    </gocomp>
+  </gocomp>
 
-    <br>
-    <br>
+  <gocomp compinst="footer1" compsrc="footer">
+    Placeholder content for footer component
+  </gocomp>
 
-    <p>
-      This is a Go variable : <go var="myvar"> </go>
-    </p>
-
-    <br>
-
-    <div>
-      This is a Go function with HTML parameters : <go func="sayhello" name="CrazyCat"> </go>
-    </div>
-
-    <br>
-
-
-
-    <p> We can call Events using "GoEvent('event-id', 'sender', 'parameter')" </p>
-    <input type="button" value="Click me" onclick="GoEvent('btn-count-click','btn-count','')" />
-    <h2>
-      Count : <go var="count"> </go>
-    </h2>
-
-    <br>
-    <br>
-
-    <div>
-      <h2>Textbox on keydown event - Partial Update of page</h2>
-      <input type="text" id="txt-name" placeholder="Name of person"
-        onkeyup="GoEvent('txt-name-change','txt-name', document.getElementById('txt-name').value)">
-      <a>
-        <go var="name-result"></go>
-      </a>
-    </div>
-
-
-
-
-  </div>
-
+  <gocomp compinst="dash2" compsrc="dash">
+    Generated internal component
+    <gocomp compinst="externalinternal1" compsrc="intl">
+      Generated internal component
+    </gocomp>
+    <gocomp compinst="externalinternal2" compsrc="intl">
+      Generated internal component
+      <gocomp compinst="externalinternal22" compsrc="intl">
+        Generated internal component
+      </gocomp>
+    </gocomp>
+  </gocomp>
 
 
 </body>

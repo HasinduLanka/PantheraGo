@@ -122,7 +122,7 @@ func APIGoEvent(urlPath []string) Response {
 		return StringResponse("error:500")
 	}
 
-	evrsp := CallEvent(urlPath[1], urlPath[2], urlPath[3])
+	evrsp := DefaultSession.CallEvent(urlPath[1], urlPath[2], urlPath[3])
 	brsp, jerr := json.Marshal(evrsp)
 	if jerr != nil {
 		PrintError(jerr)

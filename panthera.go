@@ -126,8 +126,8 @@ func (S *Session) Render(HTML string, Parent *Component) string {
 				}
 
 				C.Src = CompSrc
-				C.SetVars(CI.Args)
 				C.CallEvent("new", "", "")
+				C.SetVars(CI.Args)
 
 				Comps[CompID] = C
 				CompsRanges[CompID] = []int{CI.Arr[1], LHTML}
@@ -328,6 +328,10 @@ func (T *ComponentSrc) SetVarsOnNew(vars map[string]string) *ComponentSrc {
 	return T
 }
 
+// func (T *ComponentSrc) SetEvent(name string, ev func(*Component, string, string) EventResponse) {
+// 	T.GoEvents[name] = ev
+// }
+
 // -------------------------------------------------------------------------- //
 // -------------------------------------------------------------------------- //
 // -------------------------------------------------------------------------- //
@@ -426,8 +430,9 @@ func (C *Component) SetVars(vars map[string]string) {
 	}
 }
 
-func (C *ComponentSrc) SetFunc(name string, val func(*Component) string) {
+func (C *ComponentSrc) SetFunc(name string, val func(*Component) string) *ComponentSrc {
 	C.GoFuncs[name] = val
+	return C
 }
 
 func (C *Component) CallFunc(name string) string {
@@ -441,8 +446,9 @@ func (C *Component) CallFunc(name string) string {
 }
 
 // func(sender, para) Response
-func (C *ComponentSrc) SetEvent(id string, val func(*Component, string, string) EventResponse) {
+func (C *ComponentSrc) SetEvent(id string, val func(*Component, string, string) EventResponse) *ComponentSrc {
 	C.GoEvents[id] = val
+	return C
 }
 
 func (C *Component) CallEvent(id string, sender string, para string) EventResponse {

@@ -6,12 +6,12 @@ import (
 	"strings"
 )
 
-var RegexGoCompBegin *regexp.Regexp = regexp.MustCompile(`< *gocomp +compinst *= *"(.*?)" +compsrc *= *"(.*?)"(.*?)>`)
+var RegexGoCompBegin *regexp.Regexp = regexp.MustCompile(`< *gocomp +(.*?)>`)
 var RegexGoCompEnd *regexp.Regexp = regexp.MustCompile(`< *?/gocomp *?>`)
 var RegexGo *regexp.Regexp = regexp.MustCompile(`(?s)< *go +(.*?)>(.*?)< */go *>`)
 var RegexVar *regexp.Regexp = regexp.MustCompile(`var *= *"(.*?)".*?>`)
 var RegexFunc *regexp.Regexp = regexp.MustCompile(`func *= *"(.*?)"(.*?)>`)
-var RegexArgs *regexp.Regexp = regexp.MustCompile(` +(.*) *= *"(.*?)"`)
+var RegexArgs *regexp.Regexp = regexp.MustCompile(` *(.*?) *= *"(.*?)" *`)
 
 var NewLineRemover *strings.Replacer = strings.NewReplacer("\n", "")
 
@@ -28,29 +28,42 @@ type Session struct {
 func (S *Session) Render(HTML string, Parent *Component) string {
 
 	CB := RegexGoCompBegin.FindAllStringSubmatchIndex(HTML, 4096)
-	CE := RegexGoCompEnd.FindAllStringSubmatchIndex(HTML, 4096)
-
 	L := len(CB)
+	if L == 0 {
+		Parent.ChildComps = map[string]*Component{}
+		return HTML
+	}
+
+	CE := RegexGoCompEnd.FindAllStringSubmatchIndex(HTML, 4096)
 	if L != len(CE) {
 		return "Component Begin/End Pairs malformed"
 	}
 
-	type BoolIntArr struct {
+	type CompDetection struct {
 		IsBegin bool
 		Arr     []int
+		Args    map[string]string
 	}
 
-	CompIndexes := make(map[int]BoolIntArr, L*2)
+	CompIndexes := make(map[int]CompDetection, L*2)
 	CompIndexArr := make([]int, L*2)
 	iCompIndexArr := 0
 
 	for _, v := range CB {
-		CompIndexes[v[0]] = BoolIntArr{IsBegin: true, Arr: v}
+		sargs := HTML[v[2]:v[3]]
+		AArgs := RegexArgs.FindAllStringSubmatch(sargs, 256)
+		Args := make(map[string]string, len(AArgs))
+
+		for _, aarg := range AArgs {
+			Args[aarg[1]] = aarg[2]
+		}
+
+		CompIndexes[v[0]] = CompDetection{IsBegin: true, Arr: v, Args: Args}
 		CompIndexArr[iCompIndexArr] = v[0]
 		iCompIndexArr++
 	}
 	for _, v := range CE {
-		CompIndexes[v[0]] = BoolIntArr{IsBegin: false, Arr: v}
+		CompIndexes[v[0]] = CompDetection{IsBegin: false, Arr: v}
 		CompIndexArr[iCompIndexArr] = v[0]
 		iCompIndexArr++
 	}
@@ -59,9 +72,12 @@ func (S *Session) Render(HTML string, Parent *Component) string {
 	depth := 0
 
 	Comps := map[string]*Component{}
-	CompsBegins := map[string][]int{}
+	CompsRanges := map[string][]int{} // Begin2, End2
 	CompList := []string{}
 
+	LHTML := len(HTML)
+
+	CompID := "#"
 	for i := 0; i < L*2; i++ {
 		ci := CompIndexArr[i]
 		CI := CompIndexes[ci]
@@ -69,23 +85,34 @@ func (S *Session) Render(HTML string, Parent *Component) string {
 		if CI.IsBegin {
 
 			if depth == 0 {
-				CompID := HTML[CI.Arr[2]:CI.Arr[3]]
+				// CompID := HTML[CI.Arr[2]:CI.Arr[3]]
+				CompID = CI.Args["compid"]
+				CompSrcs := CI.Args["compsrc"]
+
+			CheckDuplicateIDs:
+				_, found := Comps[CompID]
+				if found {
+					CompID += "-copy"
+					goto CheckDuplicateIDs
+				}
 
 				var C *Component
 
 				OldC, Old := Parent.ChildComps[CompID]
 				if Old {
-					if OldC.Src == nil {
+					if OldC.Src == nil || OldC.Src.SrcID != CompSrcs {
 						C = OldC
 					} else {
+						OldC.SetVars(CI.Args)
 						Comps[CompID] = OldC
-						CompsBegins[CompID] = CI.Arr[0:2]
+						CompsRanges[CompID] = []int{CI.Arr[1], LHTML}
 						CompList = append(CompList, CompID)
 						depth++
 						continue
 					}
 				} else {
-					C = &Component{Path: Parent.Path + "." + Parent.ID,
+					C = &Component{
+						Path:       Parent.Path + "." + Parent.ID,
 						ID:         CompID,
 						Session:    S,
 						Parent:     Parent,
@@ -93,43 +120,49 @@ func (S *Session) Render(HTML string, Parent *Component) string {
 						GoVars:     map[string]string{}}
 				}
 
-				CompSrcs := HTML[CI.Arr[4]:CI.Arr[5]]
 				CompSrc := S.ComponentSrcProvider(CompSrcs)
 				if CompSrc == nil {
-					println("Component source not found ID:" + CompID + " Src:" + CompSrcs)
+					println("Component source not found. ID:" + CompID + " Src:" + CompSrcs)
 				}
 
 				C.Src = CompSrc
+				C.SetVars(CI.Args)
+				C.CallEvent("new", "", "")
+
 				Comps[CompID] = C
-				CompsBegins[CompID] = CI.Arr[0:2]
+				CompsRanges[CompID] = []int{CI.Arr[1], LHTML}
 				CompList = append(CompList, CompID)
 
 			}
 			depth++
 		} else {
 			depth--
+
+			if depth == 0 {
+				if CompID != "#" && len(CompsRanges[CompID]) == 2 {
+					CompsRanges[CompID][1] = CI.Arr[1]
+				}
+			}
 		}
 
 	}
-
-	// CompIndexesJ, JErr := json.Marshal(Comps)
-	// PrintError(JErr)
-	// return string(CBJ) + " <br> " + string(CEJ) + " <br> -- <br> " + string(CompIndexesJ)
 
 	Parent.ChildComps = Comps
 
 	var sb strings.Builder
 	LastI := 0
 	for _, v := range CompList {
-		CompE := CompsBegins[v][1]
-		if LastI < CompE { // Double IDs
-			sb.WriteString(HTML[LastI:CompE] + "\n")
+		CompRng := CompsRanges[v]
+		if LastI < CompRng[0] { // Double IDs
+			sb.WriteString(HTML[LastI:CompRng[0]] + "\n")
 			C := Comps[v]
 			sb.WriteString(C.Render())
 			sb.WriteString("\n</gocomp>\n")
-			LastI = CompE
+			LastI = CompRng[1]
 		}
 	}
+
+	sb.WriteString(HTML[LastI:])
 
 	return sb.String()
 
@@ -267,6 +300,38 @@ type ComponentSrc struct {
 	GoEvents map[string]func(*Component, string, string) EventResponse `json:"-"`
 }
 
+func (T ComponentSrc) Make(SrcID string, Provider func() string) *ComponentSrc {
+	T.SrcID = SrcID
+	T.Provider = Provider
+	T.GoFuncs = map[string]func(*Component) string{}
+	T.GoEvents = map[string]func(*Component, string, string) EventResponse{}
+
+	return &T
+}
+
+func (T *ComponentSrc) SetVarsOnNew(vars map[string]string) *ComponentSrc {
+	New := func(C *Component, sender string, para string) EventResponse {
+		C.SetVars(vars)
+		return EventResponse{}
+	}
+
+	OldNew, OldNewFound := T.GoEvents["new"]
+	if OldNewFound {
+		T.GoEvents["new"] = func(c *Component, s1, s2 string) EventResponse {
+			New(c, s1, s2)
+			return OldNew(c, s1, s2)
+		}
+	} else {
+		T.GoEvents["new"] = New
+	}
+
+	return T
+}
+
+// -------------------------------------------------------------------------- //
+// -------------------------------------------------------------------------- //
+// -------------------------------------------------------------------------- //
+
 type Component struct {
 	Path    string
 	ID      string
@@ -287,7 +352,8 @@ func (C *Component) Render() string {
 	if C.Src == nil {
 		return "No source for component " + C.ID
 	}
-	return RegexGo.ReplaceAllStringFunc(C.Src.Provider(), C.renderTag)
+	S2 := C.Session.Render(C.Src.Provider(), C)
+	return RegexGo.ReplaceAllStringFunc(S2, C.renderTag)
 
 }
 
@@ -295,7 +361,8 @@ func (C *Component) RenderReusable() string {
 	if C.Src == nil {
 		return "No source for reusable component " + C.ID
 	}
-	return RegexGo.ReplaceAllStringFunc(C.Src.Provider(), C.renderReusableTag)
+	S2 := C.Session.Render(C.Src.Provider(), C)
+	return RegexGo.ReplaceAllStringFunc(S2, C.renderReusableTag)
 }
 
 func (C *Component) renderTag(T string) string {
@@ -327,7 +394,14 @@ func (C *Component) renderReusableTag(T string) string {
 }
 
 func (C *Component) renderVar(T string) string {
-	return `<span govar="` + T + `">` + C.GetVar(T) + `</span> `
+	Pathed := strings.Contains(T, ".")
+	var R string
+	if Pathed {
+		R = C.Session.GetVar(T)
+	} else {
+		R = C.GetVar(T)
+	}
+	return `<span govar="` + T + `">` + R + `</span> `
 }
 
 func (C *Component) renderFunc(T string) string {
@@ -344,6 +418,12 @@ func (C *Component) GetVar(name string) string {
 		return ""
 	}
 	return val
+}
+
+func (C *Component) SetVars(vars map[string]string) {
+	for k, v := range vars {
+		C.GoVars[k] = v
+	}
 }
 
 func (C *ComponentSrc) SetFunc(name string, val func(*Component) string) {
@@ -366,6 +446,13 @@ func (C *ComponentSrc) SetEvent(id string, val func(*Component, string, string) 
 }
 
 func (C *Component) CallEvent(id string, sender string, para string) EventResponse {
+
+	if C.Src == nil {
+		return EventResponse{
+			Update: DOMEffect{},
+		}
+	}
+
 	ev, found := C.Src.GoEvents[id]
 	if !found {
 		return EventResponse{

@@ -8,30 +8,52 @@
 </head>
 
 <body>
-  <gocomp compinst="dash1" compsrc="dash">
+
+  <div>
+    <h2> BEGIN INDEX </h2>
+  </div>
+
+  <gocomp compid="dash1" compsrc="dash">
     Placeholder content for dash component
 
-    <gocomp compinst="internaldash" compsrc="intl">
+    <gocomp compid="internaldash" compsrc="intl">
       Generated internal component
     </gocomp>
   </gocomp>
+  <div>
+    <h2> BETWEEN DASH1 AND DASH2 </h2>
+  </div>
 
-  <gocomp compinst="footer1" compsrc="footer">
-    Placeholder content for footer component
-  </gocomp>
 
-  <gocomp compinst="dash2" compsrc="dash">
+  <gocomp compid="dash2" compsrc="dash">
     Generated internal component
-    <gocomp compinst="externalinternal1" compsrc="intl">
-      Generated internal component
+    <gocomp compid="externalinternal1" compsrc="intl">
+      Generated internal component externalinternal1
     </gocomp>
-    <gocomp compinst="externalinternal2" compsrc="intl">
-      Generated internal component
-      <gocomp compinst="externalinternal22" compsrc="intl">
-        Generated internal component
+    <gocomp compid="externalinternal2" compsrc="intl">
+      Generated internal component externalinternal2
+      <gocomp compid="externalinternal22" compsrc="intl">
+        Generated internal component externalinternal22
       </gocomp>
     </gocomp>
   </gocomp>
+
+  <div>
+    <h2> BETWEEN DASH2 AND FOOTER </h2>
+  </div>
+
+
+  <gocomp compid="footer1" compsrc="footer" year="2021" >
+    Placeholder content for footer component
+  </gocomp>
+
+  <gocomp compid="counter1" compsrc="counter">
+    Placeholder content for counter1 component
+  </gocomp>
+
+  <div>
+    <h2> END INDEX </h2>
+  </div>
 
 
 </body>

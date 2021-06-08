@@ -1,4 +1,7 @@
 <div>
+    <p>BEGIN COMP DASH</p>
+</div>
+<div>
     <h1> PantheraGo </h1>
     <h2>
         Open-source project by <go var="company-name"> </go>
@@ -28,11 +31,9 @@
 
 
 
-    <p> We can call Events using "GoEvent('event-id', 'sender', 'parameter')" </p>
-    <input type="button" value="Click me" onclick="GoEvent('btn-count-click','btn-count','')" />
-    <h2>
-        Count : <go var="count"> </go>
-    </h2>
+    <gocomp compid="counter1" compsrc="counter">
+        Placeholder content for counter1 component
+    </gocomp>
 
     <br>
     <br>
@@ -44,6 +45,10 @@
         <a>
             <go var="name-result"></go>
         </a>
+
     </div>
 
+</div>
+<div>
+    <p>END COMP DASH</p>
 </div>

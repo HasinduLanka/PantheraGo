@@ -13,15 +13,9 @@ func main() {
 	fmt.Println("Panthera.Go")
 
 	ComponentSrcs = map[string]*ComponentSrc{
-		"dash": {
-			SrcID: "dash",
-			Provider: func() string {
-				HTML, _ := LoadURIToString("dash.go.html")
-				return HTML
-			},
-			GoFuncs:  map[string]func(*Component) string{},
-			GoEvents: map[string]func(*Component, string, string) EventResponse{},
-		},
+		"dash":    ComponentSrc{}.Make("dash", URIProvider("dash.go.html")),
+		"footer":  ComponentSrc{}.Make("footer", URIProvider("footer.go.html")),
+		"counter": ComponentSrc{}.Make("counter", URIProvider("counter.go.html")).SetVarsOnNew(map[string]string{"count": "100"}),
 	}
 
 	DefaultSession = Session{
@@ -33,10 +27,10 @@ func main() {
 
 	DefaultSession.SetVar("dash1.company-name", "Bitblazers")
 
-	DefaultSession.SetVar("dash.bigtext", "PantheraGo is a HTML DOM manipulator written in <strong> Go Language. </strong> PantheraGo can run in the browser using Web Assembly and also, it can function as a webserver running on Linux, Mac, Windows and Android natively ")
+	DefaultSession.SetVar("dash1.bigtext", "PantheraGo is a HTML DOM manipulator written in <strong> Go Language. </strong> PantheraGo can run in the browser using Web Assembly and also, it can function as a webserver running on Linux, Mac, Windows and Android natively ")
 
 	DefaultSession.SetVar("dash1.myvar", "123")
-	DefaultSession.SetVar("dash1.count", "1")
+	DefaultSession.SetVar("dash1.count", "145")
 
 	Dash := ComponentSrcProvider("dash")
 
@@ -55,6 +49,13 @@ func main() {
 	// DefaultSession.SetEvent("root.txt-name-change", TxtNameChanged)
 
 	HttpServe()
+}
+
+func URIProvider(uri string) func() string {
+	return func() string {
+		HTML, _ := LoadURIToString(uri)
+		return HTML
+	}
 }
 
 func ComponentSrcProvider(src string) *ComponentSrc {

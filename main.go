@@ -25,6 +25,13 @@ func main() {
 
 	DefaultSession.MakeRoot()
 
+	DefaultSession.SetVar("root.var1", "This variable is available throughout the session")
+	DefaultSession.SetVar("root.company-name", "Bitblazers")
+	// DefaultSession.RootComp.Src.SetFunc()
+	DefaultSession.RootComp.Src.SetFunc("time", func(c *Component) string {
+		return time.Now().String()
+	})
+
 	DefaultSession.SetVar("dash1.company-name", "Bitblazers")
 
 	DefaultSession.SetVar("dash1.bigtext", "PantheraGo is a HTML DOM manipulator written in <strong> Go Language. </strong> PantheraGo can run in the browser using Web Assembly and also, it can function as a webserver running on Linux, Mac, Windows and Android natively ")

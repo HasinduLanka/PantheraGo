@@ -2,34 +2,46 @@
     <p>BEGIN COMP DASH</p>
 </div>
 <div>
+
     <h1> PantheraGo </h1>
-    <h2>
-        Open-source project by <go var="company-name"> </go>
-    </h2>
+    <div attr1="at1" goattributes="true" goattr-style="txtstyle" style="color:blue">
 
-    <p>
-        <go var="bigtext">
-            <h3>I'm dummy text </h3>
-            I'll be here until PantheraGo replace me with actual content
-        </go>
-    </p>
+        <h2>
+            Open-source project by <go var="company-name"> </go>
+        </h2>
 
+        <input type="text" readonly goattributes="true" goattr-value="root.time"> </input>
+
+
+
+        <p>
+            <go var="bigtext">
+                <h3>I'm dummy text </h3>
+                I'll be here until PantheraGo replace me with actual content
+            </go>
+        </p>
+
+
+        <br>
+        <br>
+
+        <p>
+            This is a Go variable : <go var="myvar"> </go>
+        </p>
+
+        <br>
+
+        <div>
+            This is a Go function with HTML parameters : <go func="sayhello" name="CrazyCat"> </go>
+        </div>
+
+    </div>
     <br>
-    <br>
 
-    <p>
-        This is a Go variable : <go var="myvar"> </go>
-    </p>
-
-    <br>
 
     <div>
-        This is a Go function with HTML parameters : <go func="sayhello" name="CrazyCat"> </go>
+        <go var="root.var1"></go>
     </div>
-
-    <br>
-
-
 
     <gocomp compid="counter1" compsrc="counter">
         Placeholder content for counter1 component

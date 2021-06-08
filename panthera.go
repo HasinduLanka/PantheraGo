@@ -9,11 +9,18 @@ import (
 var RegexGoCompBegin *regexp.Regexp = regexp.MustCompile(`< *gocomp +(.*?)>`)
 var RegexGoCompEnd *regexp.Regexp = regexp.MustCompile(`< *?/gocomp *?>`)
 var RegexGo *regexp.Regexp = regexp.MustCompile(`(?s)< *go +(.*?)>(.*?)< */go *>`)
-var RegexVar *regexp.Regexp = regexp.MustCompile(`var *= *"(.*?)".*?>`)
-var RegexFunc *regexp.Regexp = regexp.MustCompile(`func *= *"(.*?)"(.*?)>`)
+var RegexVar *regexp.Regexp = regexp.MustCompile(` var *= *"(.*?)".*?>`)
+var RegexFunc *regexp.Regexp = regexp.MustCompile(` func *= *"(.*?)"(.*?)>`)
 var RegexArgs *regexp.Regexp = regexp.MustCompile(` *(.*?) *= *"(.*?)" *`)
+var RegexGoAttrs *regexp.Regexp = regexp.MustCompile(`<.*? goattributes *= *"true" .*?>`)
+var RegexGoAttr *regexp.Regexp = regexp.MustCompile(` goattr-(.*?) *= *"(.*?)"`)
 
 var NewLineRemover *strings.Replacer = strings.NewReplacer("\n", "")
+var replacerEscapeForRegex *strings.Replacer = strings.NewReplacer(`.`, `\.`, `*`, `\*`, `\`, `\\`)
+
+func EscapeForRegex(s string) string {
+	return replacerEscapeForRegex.Replace(s)
+}
 
 // -------------------------------------------------------------------------- //
 // -------------------------------------------------------------------------- //
@@ -55,7 +62,7 @@ func (S *Session) Render(HTML string, Parent *Component) string {
 		Args := make(map[string]string, len(AArgs))
 
 		for _, aarg := range AArgs {
-			Args[aarg[1]] = aarg[2]
+			Args[strings.TrimPrefix(aarg[1], "gopara-")] = aarg[2]
 		}
 
 		CompIndexes[v[0]] = CompDetection{IsBegin: true, Arr: v, Args: Args}
@@ -168,10 +175,6 @@ func (S *Session) Render(HTML string, Parent *Component) string {
 
 }
 
-func (S *Session) RenderComp(gocomp string) string {
-	return ""
-}
-
 func (S *Session) ResolveCompPath(path string) *Component {
 	p := strings.Split(path, ".")
 	return S.ResolveComp(p)
@@ -224,6 +227,8 @@ func (S *Session) MakeRoot() {
 			Provider: func() string {
 				return ""
 			},
+			GoFuncs:  map[string]func(*Component) string{},
+			GoEvents: map[string]func(*Component, string, string) EventResponse{},
 		},
 		Session:    &DefaultSession,
 		Parent:     nil,
@@ -357,8 +362,30 @@ func (C *Component) Render() string {
 		return "No source for component " + C.ID
 	}
 	S2 := C.Session.Render(C.Src.Provider(), C)
-	return RegexGo.ReplaceAllStringFunc(S2, C.renderTag)
 
+	S2 = RegexGoAttrs.ReplaceAllStringFunc(S2,
+		func(s string) string {
+			matches := RegexGoAttr.FindAllStringSubmatch(s, 64)
+			s = strings.TrimSuffix(s, ">")
+
+			for _, match := range matches {
+				if len(match) == 3 {
+					kattr := EscapeForRegex(match[1])
+					vattr := EscapeForRegex(match[2])
+					re, rerr := regexp.Compile(` ` + kattr + ` *= *".*?"`)
+					if rerr != nil {
+						println("Go Attribute syntax error : " + kattr + `="` + vattr + `"`)
+					}
+					s = re.ReplaceAllString(s, "")
+
+					s += ` ` + kattr + `="` + C.CallFunc(match[2]) + `"`
+				}
+			}
+			s += " >"
+			return s
+		})
+
+	return RegexGo.ReplaceAllStringFunc(S2, C.renderTag)
 }
 
 func (C *Component) RenderReusable() string {
@@ -413,15 +440,45 @@ func (C *Component) renderFunc(T string) string {
 }
 
 func (C *Component) SetVar(name string, val string) {
-	C.GoVars[name] = val
+
+	Pathed := strings.Contains(name, ".")
+
+	if Pathed {
+		if C.ChildComps != nil && len(C.ChildComps) != 0 {
+			splts := strings.SplitN(name, ".", 2)
+			ch, chf := C.ChildComps[splts[0]]
+			if chf {
+				ch.SetVar(splts[1], val)
+				return
+			}
+		}
+		C.Session.SetVar(name, val)
+	} else {
+		C.GoVars[name] = val
+	}
+
 }
 
 func (C *Component) GetVar(name string) string {
-	val, found := C.GoVars[name]
-	if !found {
-		return ""
+	Pathed := strings.Contains(name, ".")
+
+	if Pathed {
+		if C.ChildComps != nil && len(C.ChildComps) != 0 {
+			splts := strings.SplitN(name, ".", 2)
+			ch, chf := C.ChildComps[splts[0]]
+			if chf {
+				return ch.GetVar(splts[1])
+			}
+		}
+		return C.Session.GetVar(name)
+	} else {
+		val, found := C.GoVars[name]
+		if !found {
+			return ""
+		}
+		return val
 	}
-	return val
+
 }
 
 func (C *Component) SetVars(vars map[string]string) {
@@ -436,12 +493,30 @@ func (C *ComponentSrc) SetFunc(name string, val func(*Component) string) *Compon
 }
 
 func (C *Component) CallFunc(name string) string {
-	fn, found := C.Src.GoFuncs[name]
-	if !found {
-		return ""
-	}
 
-	return fn(C)
+	Pathed := strings.Contains(name, ".")
+
+	if Pathed {
+		if C.ChildComps != nil && len(C.ChildComps) != 0 {
+			splts := strings.SplitN(name, ".", 2)
+			ch, chf := C.ChildComps[splts[0]]
+			if chf {
+				return ch.CallFunc(splts[1])
+			}
+		}
+		return C.Session.CallFunc(name)
+	} else {
+		fn, found := C.Src.GoFuncs[name]
+		if !found {
+			val, varfound := C.GoVars[name]
+			if !varfound {
+				return ""
+			}
+			return val
+		}
+
+		return fn(C)
+	}
 
 }
 

@@ -9,7 +9,10 @@
             "type": "go",
             "request": "launch",
             "mode": "auto",
-            "program": "${fileDirname}"
+            "program": "${fileDirname}",
+            "dlvLoadConfig": {
+                "maxStringLen": 128,
+            }
         }
     ]
 }

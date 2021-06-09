@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 )
 
 var RegexGoCompBegin *regexp.Regexp = regexp.MustCompile(`< *gocomp +(.*?)>`)
@@ -28,11 +29,13 @@ func EscapeForRegex(s string) string {
 
 type Session struct {
 	ID                   string
+	Pass                 string
 	RootComp             *Component
 	ComponentSrcProvider func(string) *ComponentSrc
+	LastAccess           time.Time
 }
 
-func (S *Session) Render(HTML string, Parent *Component) string {
+func (S *Session) RenderComponents(HTML string, Parent *Component) string {
 
 	CB := RegexGoCompBegin.FindAllStringSubmatchIndex(HTML, 4096)
 	L := len(CB)
@@ -119,7 +122,7 @@ func (S *Session) Render(HTML string, Parent *Component) string {
 					}
 				} else {
 					C = &Component{
-						Path:       Parent.Path + "." + Parent.ID,
+						Path:       Parent.ChildPrefix(),
 						ID:         CompID,
 						Session:    S,
 						Parent:     Parent,
@@ -220,17 +223,10 @@ func (S *Session) ResolveComp(p []string) *Component {
 
 func (S *Session) MakeRoot() {
 	S.RootComp = &Component{
-		Path: "",
-		ID:   "root",
-		Src: &ComponentSrc{
-			SrcID: "root",
-			Provider: func() string {
-				return ""
-			},
-			GoFuncs:  map[string]func(*Component) string{},
-			GoEvents: map[string]func(*Component, string, string) EventResponse{},
-		},
-		Session:    &DefaultSession,
+		Path:       "",
+		ID:         "root",
+		Src:        S.ComponentSrcProvider("root"),
+		Session:    S,
 		Parent:     nil,
 		ChildComps: map[string]*Component{},
 		GoVars:     map[string]string{},
@@ -357,13 +353,40 @@ type EventResponse struct {
 	Update DOMEffect
 }
 
+func (C *Component) ChildPrefix() string {
+	if len(C.Path) == 0 {
+		return C.ID
+	}
+	return C.Path + "." + C.ID
+}
+
 func (C *Component) Render() string {
-	if C.Src == nil {
+	if C.Src == nil || C.Src.Provider == nil {
 		return "No source for component " + C.ID
 	}
-	S2 := C.Session.Render(C.Src.Provider(), C)
+	return C.RenderSource(C.Src.Provider())
+}
 
-	S2 = RegexGoAttrs.ReplaceAllStringFunc(S2,
+func (C *Component) RenderSource(source string) string {
+
+	source = C.renderGoDivs(C.Session.RenderComponents(source, C))
+	return RegexGo.ReplaceAllStringFunc(source, C.renderTag)
+}
+
+func (C *Component) RenderReusable() string {
+	if C.Src == nil || C.Src.Provider == nil {
+		return "No source for component " + C.ID
+	}
+	return C.RenderSourceReusable(C.Src.Provider())
+}
+
+func (C *Component) RenderSourceReusable(source string) string {
+	source = C.renderGoDivs(C.Session.RenderComponents(source, C))
+	return RegexGo.ReplaceAllStringFunc(source, C.renderReusableTag)
+}
+
+func (C *Component) renderGoDivs(source string) string {
+	return RegexGoAttrs.ReplaceAllStringFunc(source,
 		func(s string) string {
 			matches := RegexGoAttr.FindAllStringSubmatch(s, 64)
 			s = strings.TrimSuffix(s, ">")
@@ -384,16 +407,6 @@ func (C *Component) Render() string {
 			s += " >"
 			return s
 		})
-
-	return RegexGo.ReplaceAllStringFunc(S2, C.renderTag)
-}
-
-func (C *Component) RenderReusable() string {
-	if C.Src == nil {
-		return "No source for reusable component " + C.ID
-	}
-	S2 := C.Session.Render(C.Src.Provider(), C)
-	return RegexGo.ReplaceAllStringFunc(S2, C.renderReusableTag)
 }
 
 func (C *Component) renderTag(T string) string {
@@ -425,18 +438,13 @@ func (C *Component) renderReusableTag(T string) string {
 }
 
 func (C *Component) renderVar(T string) string {
-	Pathed := strings.Contains(T, ".")
-	var R string
-	if Pathed {
-		R = C.Session.GetVar(T)
-	} else {
-		R = C.GetVar(T)
-	}
-	return `<span govar="` + T + `">` + R + `</span> `
+	Abs, R := C.GetPathAndVar(T)
+	return `<span govar="` + Abs + `">` + R + `</span> `
 }
 
 func (C *Component) renderFunc(T string) string {
-	return `<span gofunc="` + T + `">` + C.CallFunc(T) + `</span> `
+	Abs, R := C.GetPathAndVar(T)
+	return `<span govar="` + Abs + `">` + R + `</span> `
 }
 
 func (C *Component) SetVar(name string, val string) {
@@ -477,6 +485,25 @@ func (C *Component) GetVar(name string) string {
 			return ""
 		}
 		return val
+	}
+
+}
+
+func (C *Component) GetPathAndVar(name string) (string, string) {
+
+	Pathed := strings.Contains(name, ".")
+
+	if Pathed {
+		if C.ChildComps != nil && len(C.ChildComps) != 0 {
+			splts := strings.SplitN(name, ".", 2)
+			ch, chf := C.ChildComps[splts[0]]
+			if chf {
+				return ch.ChildPrefix() + "." + splts[1], ch.CallFunc(splts[1])
+			}
+		}
+		return name, C.Session.CallFunc(name)
+	} else {
+		return C.ChildPrefix() + "." + name, C.CallFunc(name)
 	}
 
 }
@@ -556,6 +583,91 @@ func (C *Component) CallEvent(id string, sender string, para string) EventRespon
 // -------------------------------------------------------------------------- //
 // -------------------------------------------------------------------------- //
 
+type StashedSession struct {
+	ID       string
+	RootComp StashedComponent
+}
+
+type StashedComponent struct {
+	Path  string
+	ID    string
+	SrcID string
+
+	ChildComps map[string]StashedComponent
+
+	GoVars map[string]string
+}
+
+func (S *Session) Stash() StashedSession {
+	O := StashedSession{ID: S.ID, RootComp: S.RootComp.Stash()}
+	return O
+}
+
+func (S *StashedSession) Summon(ComponentSrcProvider func(string) *ComponentSrc) *Session {
+	O := Session{ID: S.ID, ComponentSrcProvider: ComponentSrcProvider, LastAccess: time.Now()}
+	O.RootComp = S.RootComp.Summon(&O)
+	return &O
+}
+
+func (C *Component) Stash() StashedComponent {
+	O := StashedComponent{
+		Path:       C.Path,
+		ID:         C.ID,
+		ChildComps: make(map[string]StashedComponent, len(C.ChildComps)),
+		GoVars:     make(map[string]string, len(C.GoVars)),
+	}
+
+	if C.Src != nil {
+		O.SrcID = C.Src.SrcID
+	}
+
+	if len(C.ChildComps) != 0 {
+		for k, v := range C.ChildComps {
+			O.ChildComps[k] = v.Stash()
+		}
+	}
+
+	if len(C.GoVars) != 0 {
+		for k, v := range C.GoVars {
+			O.GoVars[k] = v
+		}
+	}
+
+	return O
+}
+
+func (C *StashedComponent) Summon(S *Session) *Component {
+	O := Component{
+		Path:       C.Path,
+		ID:         C.ID,
+		Src:        S.ComponentSrcProvider(C.SrcID),
+		Session:    S,
+		ChildComps: make(map[string]*Component, len(C.ChildComps)),
+		GoVars:     make(map[string]string, len(C.GoVars)),
+	}
+
+	if len(C.ChildComps) != 0 {
+		for k, v := range C.ChildComps {
+			x0 := v.Summon(S)
+			x0.Parent = &O
+			O.ChildComps[k] = x0
+		}
+	}
+
+	if len(C.GoVars) != 0 {
+		for k, v := range C.GoVars {
+			O.GoVars[k] = v
+		}
+	}
+
+	return &O
+
+}
+
+// -------------------------------------------------------------------------- //
+// -------------------------------------------------------------------------- //
+// -------------------------------------------------------------------------- //
+
 type DOMEffect struct {
 	Rerender      map[string]string // [root.compid1.compid2]content
 	GoVarChanges  map[string]string // [root.govarname]value
@@ -566,18 +678,17 @@ func (F *DOMEffect) New(C Component) {
 
 	F.Rerender = map[string]string{}
 	F.GoVarChanges = map[string]string{}
-	F.GoFuncChanges = map[string]string{}
 
 }
 
-func (F *DOMEffect) AddRerender(C Component) {
-	F.Rerender[C.Path+"."+C.ID] = C.Render()
+func (F *DOMEffect) AddRerender(C Component) *DOMEffect {
+
+	F.Rerender[C.ChildPrefix()] = C.Render()
+	return F
 }
 
-func (F *DOMEffect) AddVar(C Component, varname string) {
-	F.GoFuncChanges[C.Path+"."+C.ID+"."+varname] = C.GetVar(varname)
-}
-
-func (F *DOMEffect) AddFunc(C Component, varname string) {
-	F.GoFuncChanges[C.Path+"."+C.ID+"."+varname] = C.GetVar(varname)
+func (F *DOMEffect) AddVar(C Component, varname string) *DOMEffect {
+	abs, val := C.GetPathAndVar(varname)
+	F.GoVarChanges[abs] = val
+	return F
 }

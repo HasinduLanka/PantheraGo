@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -11,12 +10,20 @@ import (
 	"strings"
 )
 
-type API_POST_Recieved func([]string, []byte) Response
-type API_GET_Recieved func([]string) Response
+type API_POST_Recieved func(*SvrRequest, []byte) Response
+type API_GET_Recieved func(*SvrRequest) Response
 
 type Response struct {
 	body    []byte
 	headers map[string]string
+}
+
+type SvrRequest struct {
+	Paths         []string
+	Req           *http.Request
+	Resp          *http.ResponseWriter
+	Body          []byte // nil for GET
+	session_cache *Session
 }
 
 func BodyResponse(body []byte) Response {
@@ -24,6 +31,57 @@ func BodyResponse(body []byte) Response {
 }
 func StringResponse(body string) Response {
 	return Response{[]byte(body), map[string]string{}}
+}
+
+func (sv *SvrRequest) AuthSession() *Session {
+
+	if sv.session_cache != nil {
+		return sv.session_cache
+	}
+
+	if sv.Req == nil {
+		return nil
+	}
+
+	sidck, ckerr := sv.Req.Cookie("panthera-session")
+	passck, passerr := sv.Req.Cookie("panthera-pass")
+
+	var S *Session = nil
+
+	if ckerr == nil && passerr == nil {
+		sid := sidck.Value
+		pass := passck.Value
+		S = SessionMngr.Get(sid, pass)
+
+	}
+
+	if S == nil {
+		S = SessionMngr.NewSession()
+		(*sv.Resp).Header().Add("panthera-new", "true")
+
+	}
+
+	sv.SetSessionCookies(S)
+
+	sv.session_cache = S
+	return S
+}
+
+func (sv *SvrRequest) SetSessionCookies(S *Session) {
+	http.SetCookie(*sv.Resp, &http.Cookie{
+		Name:   "panthera-session",
+		Value:  S.ID,
+		MaxAge: 60 * 30,
+	})
+	http.SetCookie(*sv.Resp, &http.Cookie{
+		Name:   "panthera-pass",
+		Value:  S.Pass,
+		MaxAge: 60 * 30,
+	})
+}
+
+func (sv *SvrRequest) NewSession() {
+
 }
 
 var API_POSTs map[*regexp.Regexp]API_POST_Recieved = map[*regexp.Regexp]API_POST_Recieved{
@@ -63,8 +121,8 @@ func ServeAPIsAndFiles(w http.ResponseWriter, r *http.Request) {
 			Matches := apiPath.FindAllStringSubmatch(urlpath, 8)
 			if len(Matches) != 0 {
 				fmt.Println("Serving API " + strings.Join(Matches[0], " - "))
-				resp := api(Matches[0])
-				ReturnResponse(resp, w)
+				resp := api(&SvrRequest{Paths: Matches[0], Req: r, Resp: &w})
+				svrReturnResponse(resp, w)
 				return
 			}
 
@@ -88,8 +146,8 @@ func ServeAPIsAndFiles(w http.ResponseWriter, r *http.Request) {
 			Matches := apiPath.FindAllStringSubmatch(urlpath, 8)
 			if len(Matches) != 0 {
 				fmt.Println("Serving API " + strings.Join(Matches[0], " - "))
-				resp := api(Matches[0], body)
-				ReturnResponse(resp, w)
+				resp := api(&SvrRequest{Paths: Matches[0], Req: r, Resp: &w}, body)
+				svrReturnResponse(resp, w)
 				return
 			}
 
@@ -100,7 +158,7 @@ func ServeAPIsAndFiles(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func ReturnResponse(resp Response, w http.ResponseWriter) {
+func svrReturnResponse(resp Response, w http.ResponseWriter) {
 	if resp.headers != nil {
 		for k, v := range resp.headers {
 			w.Header().Set(k, v)
@@ -111,22 +169,6 @@ func ReturnResponse(resp Response, w http.ResponseWriter) {
 	}
 }
 
-func APIPostCall(urlPath []string, body []byte) Response {
+func APIPostCall(Req *SvrRequest, body []byte) Response {
 	return Response{}
-}
-
-// api/id/sender/para -> ReloadRequired?
-func APIGoEvent(urlPath []string) Response {
-	if len(urlPath) != 4 {
-		println("API path error : " + strings.Join(urlPath, " - "))
-		return StringResponse("error:500")
-	}
-
-	evrsp := DefaultSession.CallEvent(urlPath[1], urlPath[2], urlPath[3])
-	brsp, jerr := json.Marshal(evrsp)
-	if jerr != nil {
-		PrintError(jerr)
-	}
-
-	return BodyResponse(brsp)
 }

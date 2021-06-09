@@ -1,52 +1,50 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 )
 
-var DefaultSession Session
-var ComponentSrcs map[string]*ComponentSrc
+var SessionMngr SessionManager
 
 func main() {
 	fmt.Println("Panthera.Go")
 
-	ComponentSrcs = map[string]*ComponentSrc{
+	MakeDefaultSession()
+
+	HttpServe()
+}
+
+func MakeDefaultSession() {
+
+	SessionMngr = SessionManager{Sessions: map[string]*Session{}}
+	SessionMngr.Make()
+
+	SessionMngr.ComponentSrcs = map[string]*ComponentSrc{
+		// Root is a virtual component at Session.RootComp of every Session. Think it as a global variable store for Session
+		"root":    ComponentSrc{}.Make("root", func() string { return "" }), // No need of source for Root
 		"dash":    ComponentSrc{}.Make("dash", URIProvider("dash.go.html")),
 		"footer":  ComponentSrc{}.Make("footer", URIProvider("footer.go.html")),
 		"counter": ComponentSrc{}.Make("counter", URIProvider("counter.go.html")).SetVarsOnNew(map[string]string{"count": "100"}),
 	}
 
-	DefaultSession = Session{
-		ID:                   "Default",
-		ComponentSrcProvider: ComponentSrcProvider,
-	}
-
+	DefaultSession := Session{ID: "Default", ComponentSrcProvider: SessionMngr.ComponentSrcProvider}
 	DefaultSession.MakeRoot()
 
 	DefaultSession.SetVar("root.var1", "This variable is available throughout the session")
 	DefaultSession.SetVar("root.company-name", "Bitblazers")
-	// DefaultSession.RootComp.Src.SetFunc()
-	DefaultSession.RootComp.Src.SetFunc("time", func(c *Component) string {
-		return time.Now().String()
-	})
 
-	DefaultSession.SetVar("dash1.company-name", "Bitblazers")
+	DefaultSession.SetVar("root.dash1.company-name", "Bitblazers")
 
-	DefaultSession.SetVar("dash1.bigtext", "PantheraGo is a HTML DOM manipulator written in <strong> Go Language. </strong> PantheraGo can run in the browser using Web Assembly and also, it can function as a webserver running on Linux, Mac, Windows and Android natively ")
+	DefaultSession.SetVar("root.dash1.bigtext", "PantheraGo is a HTML DOM manipulator written in <strong> Go Language. </strong> PantheraGo can run in the browser using Web Assembly and also, it can function as a webserver running on Linux, Mac, Windows and Android natively ")
 
-	DefaultSession.SetVar("dash1.myvar", "123")
-	DefaultSession.SetVar("dash1.count", "145")
+	DefaultSession.SetVar("root.dash1.myvar", "123")
 
-	Dash := ComponentSrcProvider("dash")
-
-	Dash.SetFunc("new", func(c *Component) string {
-		c.SetVar("dash1.count", "123")
-		return ""
-	})
-
-	DefaultSession.ResolveCompPath("dash1").Src = Dash
+	RootSrc := SessionMngr.ComponentSrcProvider("root")
+	RootSrc.SetFunc("time", func_Root_Time)
 
 	// DefaultSession.SetFunc("dash.sayhello", SayTime)
 
@@ -55,7 +53,8 @@ func main() {
 	// DefaultSession.SetEvent("root.btn-count-click", BtnCountClick)
 	// DefaultSession.SetEvent("root.txt-name-change", TxtNameChanged)
 
-	HttpServe()
+	SessionMngr.DefaultSessionStash = DefaultSession.Stash()
+
 }
 
 func URIProvider(uri string) func() string {
@@ -65,23 +64,40 @@ func URIProvider(uri string) func() string {
 	}
 }
 
-func ComponentSrcProvider(src string) *ComponentSrc {
-	C, found := ComponentSrcs[src]
-	if !found {
-		return nil
-	}
-	return C
-}
+func ServePanthera(Req *SvrRequest) Response {
+	HTML, _ := LoadURIToString(Req.Paths[0])
 
-func ServePanthera(Args []string) Response {
-	HTML, _ := LoadURIToString(Args[0])
-	Panthtml := DefaultSession.Render(HTML, DefaultSession.RootComp)
+	CurrentSession := Req.AuthSession()
+	CurrentSession.SetVar("root.panthera-session", CurrentSession.ID)
+
+	Panthtml := CurrentSession.RootComp.RenderSource(HTML)
 	return StringResponse(Panthtml)
 }
 
-func SayTime() string {
+func APIGoEvent(Req *SvrRequest) Response {
+	if len(Req.Paths) != 4 {
+		println("API path error : " + strings.Join(Req.Paths, " - "))
+		return StringResponse("error:500")
+	}
 
-	return "Hello there. Time is " + time.Now().String()
+	CurrentSession := Req.AuthSession()
+
+	if CurrentSession == nil {
+		println("Error. No Session")
+		return StringResponse("NoSession")
+	}
+
+	evrsp := CurrentSession.CallEvent(Req.Paths[1], Req.Paths[2], Req.Paths[3])
+	brsp, jerr := json.Marshal(evrsp)
+	if jerr != nil {
+		PrintError(jerr)
+	}
+
+	return BodyResponse(brsp)
+}
+
+func func_Root_Time(c *Component) string {
+	return time.Now().String()
 }
 
 // func BtnCountClick(sender, Para string) EventResponse {

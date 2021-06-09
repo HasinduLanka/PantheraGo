@@ -12,6 +12,9 @@
 
         <input type="text" readonly goattributes="true" goattr-value="root.time"> </input>
 
+        <h5>
+            <go var="root.panthera-session"> </go>
+        </h5>
 
 
         <p>
@@ -52,7 +55,7 @@
 
     <div>
         <h2>Textbox on keydown event - Partial Update of page</h2>
-        <input type="text" id="txt-name" placeholder="Name of person"
+        <input type="text" placeholder="Name of person"
             onkeyup="GoEvent('txt-name-change','txt-name', document.getElementById('txt-name').value)">
         <a>
             <go var="name-result"></go>

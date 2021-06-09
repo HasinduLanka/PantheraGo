@@ -25,10 +25,11 @@ func MakeDefaultSession() {
 
 	SessionMngr.ComponentSrcs = map[string]*ComponentSrc{
 		// Root is a virtual component at Session.RootComp of every Session. Think it as a global variable store for Session
-		"root":    ComponentSrc{}.Make("root", func() string { return "" }), // No need of source for Root
-		"dash":    ComponentSrc{}.Make("dash", URIProvider("dash.go.html")),
-		"footer":  ComponentSrc{}.Make("footer", URIProvider("footer.go.html")),
-		"counter": ComponentSrc{}.Make("counter", URIProvider("counter.go.html")).SetVarsOnNew(map[string]string{"count": "100"}),
+		"root":        ComponentSrc{}.Make("root", func() string { return "" }), // No need of source for Root
+		"dash":        ComponentSrc{}.Make("dash", URIProvider("dash.go.html")),
+		"footer":      ComponentSrc{}.Make("footer", URIProvider("footer.go.html")),
+		"sessionview": ComponentSrc{}.Make("sessionview", URIProvider("sessionview.go.html")),
+		"counter":     ComponentSrc{}.Make("counter", URIProvider("counter.go.html")).SetVarsOnNew(map[string]string{"count": "100"}),
 	}
 
 	DefaultSession := Session{ID: "Default", ComponentSrcProvider: SessionMngr.ComponentSrcProvider}
@@ -45,6 +46,16 @@ func MakeDefaultSession() {
 
 	RootSrc := SessionMngr.ComponentSrcProvider("root")
 	RootSrc.SetFunc("time", func_Root_Time)
+
+	SessionViewSrc := SessionMngr.ComponentSrcProvider("sessionview")
+	SessionViewSrc.SetFunc("sessionjson", func(c *Component) string {
+		jsn, jerr := json.MarshalIndent(c.Session.Stash(), "", "\t")
+		if jerr != nil {
+			return "Serializing Session to JSON failed"
+		} else {
+			return `<textarea style="width: 100%; height: 20em;">` + string(jsn) + ` </textarea>`
+		}
+	})
 
 	// DefaultSession.SetFunc("dash.sayhello", SayTime)
 

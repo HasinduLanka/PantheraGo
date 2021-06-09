@@ -11,7 +11,8 @@ var RegexGoCompBegin *regexp.Regexp = regexp.MustCompile(`< *gocomp +(.*?)>`)
 var RegexGoCompEnd *regexp.Regexp = regexp.MustCompile(`< *?/gocomp *?>`)
 var RegexGo *regexp.Regexp = regexp.MustCompile(`(?s)< *go +(.*?)>(.*?)< */go *>`)
 var RegexVar *regexp.Regexp = regexp.MustCompile(` var *= *"(.*?)".*?>`)
-var RegexFunc *regexp.Regexp = regexp.MustCompile(` func *= *"(.*?)"(.*?)>`)
+
+// var RegexFunc *regexp.Regexp = regexp.MustCompile(` func *= *"(.*?)"(.*?)>`)
 var RegexArgs *regexp.Regexp = regexp.MustCompile(` *(.*?) *= *"(.*?)" *`)
 var RegexGoAttrs *regexp.Regexp = regexp.MustCompile(`<.*? goattributes *= *"true" .*?>`)
 var RegexGoAttr *regexp.Regexp = regexp.MustCompile(` goattr-(.*?) *= *"(.*?)"`)
@@ -229,7 +230,7 @@ func (S *Session) MakeRoot() {
 		Session:    S,
 		Parent:     nil,
 		ChildComps: map[string]*Component{},
-		GoVars:     map[string]string{},
+		GoVars:     map[string]string{"compid": "root", "compsrc": "root"},
 	}
 }
 
@@ -268,15 +269,6 @@ func (S *Session) GetVar(path string) string {
 	}
 
 	return C.GetVar(name)
-}
-
-func (S *Session) CallFunc(path string) string {
-	C, name := S.ComponentOf(path)
-	if C == nil {
-		return ""
-	}
-
-	return C.CallFunc(name)
 }
 
 func (S *Session) CallEvent(path string, sender string, para string) EventResponse {
@@ -328,10 +320,6 @@ func (T *ComponentSrc) SetVarsOnNew(vars map[string]string) *ComponentSrc {
 
 	return T
 }
-
-// func (T *ComponentSrc) SetEvent(name string, ev func(*Component, string, string) EventResponse) {
-// 	T.GoEvents[name] = ev
-// }
 
 // -------------------------------------------------------------------------- //
 // -------------------------------------------------------------------------- //
@@ -401,7 +389,7 @@ func (C *Component) renderGoDivs(source string) string {
 					}
 					s = re.ReplaceAllString(s, "")
 
-					s += ` ` + kattr + `="` + C.CallFunc(match[2]) + `"`
+					s += ` ` + kattr + `="` + C.GetVar(match[2]) + `"`
 				}
 			}
 			s += " >"
@@ -415,11 +403,6 @@ func (C *Component) renderTag(T string) string {
 		return C.renderVar(MatchesVar[1])
 	}
 
-	MatchesFunc := RegexFunc.FindStringSubmatch(T)
-	if len(MatchesFunc) > 1 {
-		return C.renderFunc(MatchesFunc[1])
-	}
-
 	return T
 }
 
@@ -427,11 +410,6 @@ func (C *Component) renderReusableTag(T string) string {
 	MatchesVar := RegexVar.FindStringSubmatch(T)
 	if len(MatchesVar) > 1 {
 		return `<go ` + MatchesVar[0] + C.renderVar(MatchesVar[1]) + ` </go> `
-	}
-
-	MatchesFunc := RegexFunc.FindStringSubmatch(T)
-	if len(MatchesFunc) > 1 {
-		return `<go ` + MatchesFunc[0] + C.renderFunc(MatchesFunc[1]) + `</go> `
 	}
 
 	return T
@@ -442,9 +420,23 @@ func (C *Component) renderVar(T string) string {
 	return `<span govar="` + Abs + `">` + R + `</span> `
 }
 
-func (C *Component) renderFunc(T string) string {
-	Abs, R := C.GetPathAndVar(T)
-	return `<span govar="` + Abs + `">` + R + `</span> `
+func (C *Component) GetPathAndVar(name string) (string, string) {
+
+	Pathed := strings.Contains(name, ".")
+
+	if Pathed {
+		if C.ChildComps != nil && len(C.ChildComps) != 0 {
+			splts := strings.SplitN(name, ".", 2)
+			ch, chf := C.ChildComps[splts[0]]
+			if chf {
+				return ch.ChildPrefix() + "." + splts[1], ch.GetVar(splts[1])
+			}
+		}
+		return name, C.Session.GetVar(name)
+	} else {
+		return C.ChildPrefix() + "." + name, C.GetVar(name)
+	}
+
 }
 
 func (C *Component) SetVar(name string, val string) {
@@ -480,30 +472,16 @@ func (C *Component) GetVar(name string) string {
 		}
 		return C.Session.GetVar(name)
 	} else {
-		val, found := C.GoVars[name]
-		if !found {
-			return ""
+		val, varfound := C.GoVars[name]
+		if !varfound {
+			fn, fnfound := C.Src.GoFuncs[name]
+			if !fnfound {
+				println("Missing GoVar " + name + " for " + C.ChildPrefix())
+				return ""
+			}
+			return fn(C)
 		}
 		return val
-	}
-
-}
-
-func (C *Component) GetPathAndVar(name string) (string, string) {
-
-	Pathed := strings.Contains(name, ".")
-
-	if Pathed {
-		if C.ChildComps != nil && len(C.ChildComps) != 0 {
-			splts := strings.SplitN(name, ".", 2)
-			ch, chf := C.ChildComps[splts[0]]
-			if chf {
-				return ch.ChildPrefix() + "." + splts[1], ch.CallFunc(splts[1])
-			}
-		}
-		return name, C.Session.CallFunc(name)
-	} else {
-		return C.ChildPrefix() + "." + name, C.CallFunc(name)
 	}
 
 }
@@ -517,34 +495,6 @@ func (C *Component) SetVars(vars map[string]string) {
 func (C *ComponentSrc) SetFunc(name string, val func(*Component) string) *ComponentSrc {
 	C.GoFuncs[name] = val
 	return C
-}
-
-func (C *Component) CallFunc(name string) string {
-
-	Pathed := strings.Contains(name, ".")
-
-	if Pathed {
-		if C.ChildComps != nil && len(C.ChildComps) != 0 {
-			splts := strings.SplitN(name, ".", 2)
-			ch, chf := C.ChildComps[splts[0]]
-			if chf {
-				return ch.CallFunc(splts[1])
-			}
-		}
-		return C.Session.CallFunc(name)
-	} else {
-		fn, found := C.Src.GoFuncs[name]
-		if !found {
-			val, varfound := C.GoVars[name]
-			if !varfound {
-				return ""
-			}
-			return val
-		}
-
-		return fn(C)
-	}
-
 }
 
 // func(sender, para) Response
